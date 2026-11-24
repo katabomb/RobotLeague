@@ -1,0 +1,150 @@
+<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ロボットリーグ</title>
+<style>
+:root{--bg:#eef0ea;--fg:#1f2326;--c:#fbfbf8;--bd:#aab;--ac:#2a5d4f}
+@media(prefers-color-scheme:dark){:root{--bg:#1b1f22;--fg:#e6e8e6;--c:#262b2f;--bd:#556;--ac:#7fc4ae}}
+body{margin:0;padding:8px;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,"Hiragino Sans","Yu Gothic",sans-serif}
+button,select,input,textarea{font:inherit;color:inherit;background:var(--c);border:1px solid var(--bd);border-radius:4px}
+button{padding:3px 10px;margin:2px;cursor:pointer}button:disabled{opacity:.4;cursor:default}
+.b{background:var(--c);border:1px solid var(--bd);border-radius:6px;padding:8px;margin:6px 0;overflow-x:auto}
+table{border-collapse:collapse}td,th{border:1px solid var(--bd);padding:2px 6px;text-align:center;white-space:nowrap}
+canvas{width:min(100%,850px);display:block;margin:auto;max-width:100%;background:#dfe6d6;border:1px solid var(--bd)}
+.s{display:inline-block;width:70px}.ok{color:var(--ac);font-weight:700}.ng{color:#c33}
+textarea{width:100%;height:56px;box-sizing:border-box}
+</style>
+<h2 style="margin:4px">ロボットリーグ <small>試作版 ルールv4（Step3）</small></h2>
+<div class=b id=top></div>
+<details class=b><summary>ロボットリーグへようこそ！</summary>円形の闘技場に赤・青・黄の3機が集結した．敵の位置は常に分かるが，命中させるには照準と予測が必要だ．溝は移動を妨げるが弾丸は通過する．境界では衝突を避けるため方向転換する．強い武器は重く，エネルギーも必要だ．装備と作戦を工夫し，最下位から脱出して次の世代へ進もう．</details>
+<div class=b><canvas id=cv width=640 height=400></canvas><div id=info></div><button id=all>▶ 全15試合連続観戦</button><button id=pz>一時停止／再開</button><button id=again>再試合</button> 速度<select id=sp><option>1</option><option>2</option><option>4</option><option>8</option></select>倍 <select id=mode><option value=trial>改良機</option><option value=official>正式機</option></select><div id=matches></div><div id=live></div></div>
+<details class=b><summary>現在の正式評価・機体記録</summary><div id=tbl></div></details>
+<div class=b><b>改良対象（最下位機）</b> <span id=tsel></span><div id=des></div></div>
+<div class=b><label><input type=checkbox id=advanced>詳細設定（角度を編集）</label><div id=pat></div></div>
+<div class=b><button id=test>改良した機体を試験評価する（結果を見る）</button><button id=rev>元に戻す</button><button id=iss>次世代URLを発行</button><div id=res></div><textarea id=out readonly></textarea></div>
+<details class=b><summary>機体JSON</summary><button id=ex>書き出し</button><button id=im>読み込み</button><div id=jm></div><textarea id=js></textarea></details>
+<script>
+'use strict';
+/* ===== 1 Step2: 有限弾速・相対座標衝突・重量と半径・電力収支 ===== */
+const K={VER:4,W:640,H:400,DT:1/30,TMAX:45,SEEDS:[11,23,37],WCAP:Infinity,RCAP:32,BS:300,REACT:1,VR:80,HP:100,TAU:.8,Q0:.15,MAXST:8,KM:.7,KE:.15,EXP:1.3,KS:.2,R0:1,R1:.8,PHI:.5,
+EV:[['平原BR',0,[0,1,2]],['障害BR',1,[0,1,2]],['赤対青',0,[0,1]],['青対黄',0,[1,2]],['黄対赤',0,[2,0]]],
+CX:320,CY:200,AR:190,SR:150,
+OBS:[[320,200,30],...[0,1,2].map(i=>{const a=-Math.PI/6+i*2*Math.PI/3;return[320+100*Math.cos(a),200+100*Math.sin(a),24]})],
+SN:['赤','青','黄'],COL:['#d33','#26c','#c90'],MV:['停止','前進','後退','敵へ','敵から','周回'],
+SIT:['se','en','ev'],SITN:{se:'敵が射程外',en:'敵が射程内',ev:'敵の弾が接近中'},DN:['動力','装甲','火力','射程','センサー','電源']};
+const DEF={n:'はじまりのリーグ',g:1,b:[
+{n:'アカツキ',d:[5,3,3,3,5,3],g:1,p:{se:[[1,0,.8,0,0,2],[1,70,.8,0,0,1.5],[1,-40,.8,0,0,2]],en:[[3,0,.6,1,1,1.5],[5,0,.7,1,1,1.5]],ev:[[4,60,1,0,0,1]]}},
+{n:'アオバ',d:[2,3,6,5,5,3],g:1,p:{se:[[0,0,0,0,0,.6],[1,60,.5,0,0,1],[1,60,.5,0,0,1]],en:[[0,0,0,1,0,.8],[0,0,0,1,1,.4]],ev:[[4,90,1,0,0,1.2]]}},
+{n:'キイロ',d:[8,1,3,2,3,3],g:1,p:{se:[[1,0,1,0,0,2],[1,90,1,0,0,1.2]],en:[[5,0,1,1,1,1.5],[3,0,1,1,1,1]],ev:[[5,0,1,0,0,.8]]}}]};
+/* ===== 2 性能導出・検証 ===== */
+const der=([s,a,p,r,n,b])=>{const W=15+s+3*a+2*p+2*r+n+2*b+.12*p*r,rad=10*Math.sqrt(W/53),v=230*Math.sqrt(s/W);return{W,rad,p,n,v,tr:v/20,dmg:8+4*p,P:8+4*p,G:3*a,cd:.2,rg:Math.min(380,90+29*r),cap:80+30*b,s,rc:K.R0+K.R1*b}};
+const num=(x,lo,hi)=>typeof x==='number'&&isFinite(x)&&x>=lo&&x<=hi;
+const chk=b=>{if(!b||typeof b!=='object')return'機体の形式が不正です';if(typeof b.n!=='string'||b.n.length>20)return'機体名は20文字以内の文字列です';
+ const d=b.d;if(!Array.isArray(d)||d.length!=6||d.some(x=>!Number.isInteger(x)||x<0||!Number.isSafeInteger(x)))return'設計値は非負の整数6個です';
+ if(der(d).rad>K.RCAP)return'機体半径が出場上限を超えています';
+ for(const k of K.SIT){const p=b.p&&b.p[k];if(!Array.isArray(p)||p.length>K.MAXST)return K.SITN[k]+'時の行動は'+K.MAXST+'ステップまでです';
+  for(const s of p)if(!Array.isArray(s)||s.length!=6||!Number.isInteger(s[0])||s[0]<0||s[0]>5||!num(s[1],-180,180)||!num(s[2],0,1)||![0,1].includes(s[3])||![0,1].includes(s[4])||!num(s[5],.1,5))return K.SITN[k]+'時のステップの値が範囲外です'}return''};
+const chkL=l=>{if(!l||l.v!==K.VER)return'対応していない形式バージョンです';if(typeof l.n!=='string'||l.n.length>30||!Number.isInteger(l.g)||l.g<1)return'リーグ情報が不正です';
+ if(!Array.isArray(l.b)||l.b.length!=3)return'機体は3機必要です';for(const b of l.b){const e=chk(b);if(e)return e;if(!b.hist||!['wins','streak','best'].every(k=>Number.isSafeInteger(b.hist[k])&&b.hist[k]>=0))return'戦績情報が不正です';if(!Number.isInteger(b.g)||b.g<1||b.g>l.g)return'採用世代が不正です'}return''};
+/* ===== 3 戦闘エンジン（DOM非依存・決定論的） ===== */
+const rng=s=>()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+const nd=x=>{while(x>Math.PI)x-=2*Math.PI;while(x<-Math.PI)x+=2*Math.PI;return x};
+const seg=(x1,y1,x2,y2,o)=>{const dx=x2-x1,dy=y2-y1;let t=((o[0]-x1)*dx+(o[1]-y1)*dy)/(dx*dx+dy*dy||1e-9);t=Math.max(0,Math.min(1,t));return Math.hypot(x1+t*dx-o[0],y1+t*dy-o[1])<o[2]};
+function mkMatch(bots,ei,seed,rot){
+ const ev=K.EV[ei],R=rng(seed*7+ei),obs=ev[1]?K.OBS:[];
+ const U=ev[2].map((id,i)=>{const n=ev[2].length,an=-Math.PI/2+rot*2*Math.PI/3+i*(n==2?Math.PI:2*Math.PI/3),p=[K.CX+K.SR*Math.cos(an),K.CY+K.SR*Math.sin(an),an+Math.PI];return{id,x:p[0],y:p[1],h:p[2],hs:p[2],hp:K.HP,d:der(bots[id].d),cd:0,aim:0,tg:-1,dist:0,hit:-9,sit:'',si:0,st:0,dmg:0,sh:0,ht:0,sn:0,tk:0,en:0,em:0,es:0,ea:0,er:0,ns:0,dead:-1,pd:0,why:'',nh:p[2],vx:0,vy:0}});
+ U.forEach(a=>a.e=a.d.cap);
+ const m={t:0,obs,u:U,done:false,fx:[],bullets:[],pts:[]};
+ const score=()=>{const key=U.map(a=>a.dead<0?[1e9,Math.round((a.dmg+.5*a.hp)*10)]:[a.dead,0]),o=U.map((_,i)=>i).sort((x,y)=>key[y][0]-key[x][0]||key[y][1]-key[x][1]),base=U.length==3?[2,1,0]:[2,0],eq=(x,y)=>key[x][0]==key[y][0]&&key[x][1]==key[y][1];
+  for(let i=0,j;i<o.length;i=j+1){j=i;while(j+1<o.length&&eq(o[j+1],o[i]))j++;let s=0;for(let k=i;k<=j;k++)s+=base[k];for(let k=i;k<=j;k++)m.pts[o[k]]=s/(j-i+1)}};
+ m.step=()=>{if(m.done)return;const dt=K.DT;m.t+=dt;const A=U.filter(a=>a.dead<0);
+  for(const a of A){a.tk++;let best=-1,bd=1e9;
+   U.forEach((b,j)=>{if(b===a||b.dead>=0)return;const dd=Math.hypot(b.x-a.x,b.y-a.y);if(dd<bd){bd=dd;best=j}});
+   if(best!==a.tg){a.tg=best;a.aim=0}a.dist=bd}
+  for(const a of A){a.pvx=a.vx;a.pvy=a.vy}
+  for(const a of A){const d=a.d,b=a.tg>=0?U[a.tg]:null,sit=m.bullets.some(q=>{if(q.owner===a.id)return false;const x=q.x-a.x,y=q.y-a.y,vx=q.vx-a.pvx,vy=q.vy-a.pvy,t=-(x*vx+y*vy)/(vx*vx+vy*vy||1);return t>0&&t<Math.min(K.REACT,q.left/K.BS)&&Math.hypot(x+vx*t,y+vy*t)<a.d.rad+5})?'ev':(b&&a.dist<=d.rg?'en':'se');
+   if(sit!==a.sit){a.sit=sit;a.si=0;a.st=0;a.hs=a.h;a.bounce=null}
+   const P=bots[a.id].p[sit],s=P.length?P[a.si%P.length]:[0,0,0,0,0,1];a.why=K.SITN[sit]+' 手順'+(a.si+1)+(b?' 目標'+K.SN[b.id]:'');
+   a.st+=dt;if(a.st>=s[5]){a.si=(a.si+1)%Math.max(1,P.length);a.st=0;a.hs=a.h;a.bounce=null}
+   const mv=s[0],g=s[1]*Math.PI/180,br=b?Math.atan2(b.y-a.y,b.x-a.x):a.hs;
+   const dir=a.bounce??[a.h,a.hs+g,a.h+Math.PI,br+g,br+Math.PI+g,br+Math.PI/2+g][mv];let h=a.h;
+   if(mv!=0&&mv!=2){const tn=d.tr*dt;h+=Math.max(-tn,Math.min(tn,nd(dir-a.h)))}
+   let f=mv==0?0:s[2]*(mv==2?.6:Math.max(0,Math.cos(nd(dir-h))));const aim=!!(s[3]&&b),rg=d.rc*dt,available=Math.min(d.cap,a.e+rg),gain=available-a.e,ac=Math.min(available,aim?K.KS*d.n*dt:0),budget=Math.min(available-ac,Math.max(K.PHI*rg,a.e+K.PHI*rg-ac));
+   if(d.s>0)f=Math.min(f,Math.sqrt(Math.max(0,budget)/(dt*K.KM*d.s)));const v=d.v*f,tr=a.bounce!=null?dir:mv==2?dir:h;a.nh=h;a.vx=Math.cos(tr)*v;a.vy=Math.sin(tr)*v;a.aim=aim?a.aim+dt:0;
+   const mc=dt*K.KM*d.s*f*f;a.e=Math.max(0,available-ac-mc);a.er+=gain;a.em+=mc;a.ea+=ac;a.en+=mc+ac;
+   a.cd-=dt;if(b&&a.dist<=d.rg)a.sn++;
+   if(s[4]&&b&&a.cd<=0&&a.dist<=d.rg){const cost=K.KE*Math.pow(d.P,K.EXP);if(a.e<cost)a.ns++;else{
+    const noise=()=> (R()+R()+R()+R()-2)*Math.sqrt(3),vx=b.pvx+noise()*35/(1+d.n),vy=b.pvy+noise()*35/(1+d.n);let t=a.dist/K.BS;for(let i=0;i<5;i++)t=Math.hypot(b.x-a.x+vx*t,b.y-a.y+vy*t)/K.BS;
+    const x=b.x-a.x+vx*t,y=b.y-a.y+vy*t;if(Math.hypot(x,y)<=d.rg){const ang=Math.atan2(y,x)+noise()*.5/(1+d.n)*(.4+.6*Math.exp(-a.aim/.8))*(1+2*v/K.VR);a.cd=d.cd;a.e-=cost;a.en+=cost;a.es+=cost;a.sh++;a.aim=0;m.bullets.push({x:a.x,y:a.y,vx:K.BS*Math.cos(ang),vy:K.BS*Math.sin(ang),left:d.rg,owner:a.id,P:d.P})}}}}
+  for(const a of A){a.ox=a.x;a.oy=a.y;a.h=a.nh;a.x+=a.vx*dt;a.y+=a.vy*dt}
+  const reflect=(a,nx,ny)=>{const dot=a.vx*nx+a.vy*ny;if(dot<=0)return;const x=a.vx-2*dot*nx,y=a.vy-2*dot*ny;a.bounce=Math.atan2(y,x);a.h=a.bounce;a.vx=x;a.vy=y};
+  const constrain=a=>{for(const o of obs){const dx=a.x-o[0],dy=a.y-o[1],l=Math.hypot(dx,dy),r=o[2]+a.d.rad;if(l<r){if(l)reflect(a,-dx/l,-dy/l);a.x=o[0]+(l?dx/l:1)*r;a.y=o[1]+(l?dy/l:0)*r}}const dx=a.x-K.CX,dy=a.y-K.CY,l=Math.hypot(dx,dy),q=K.AR-a.d.rad;if(l>q){reflect(a,dx/l,dy/l);a.x=K.CX+dx/l*q;a.y=K.CY+dy/l*q}};
+  for(let i=0;i<4;i++){A.forEach(constrain);for(let j=0;j<A.length;j++)for(let k=j+1;k<A.length;k++){const a=A[j],b=A[k],dx=b.x-a.x,dy=b.y-a.y,l=Math.hypot(dx,dy),over=a.d.rad+b.d.rad-l;if(over>0){const x=l?dx/l:1,y=l?dy/l:0,f=b.d.W/(a.d.W+b.d.W);a.x-=x*over*f;a.y-=y*over*f;b.x+=x*over*(1-f);b.y+=y*over*(1-f)}}}A.forEach(constrain);for(const a of A){a.vx=(a.x-a.ox)/dt;a.vy=(a.y-a.oy)/dt}
+  m.bullets=m.bullets.filter(q=>{const f=Math.min(1,q.left/(K.BS*dt)),x=q.x+q.vx*dt*f,y=q.y+q.vy*dt*f;let hit=null,first=2;for(const a of A){if(a.id===q.owner)continue;const sx=q.x-a.ox,sy=q.y-a.oy,dx=x-q.x-(a.x-a.ox)*f,dy=y-q.y-(a.y-a.oy)*f,aa=dx*dx+dy*dy,bb=sx*dx+sy*dy,cc=sx*sx+sy*sy-a.d.rad*a.d.rad,disc=bb*bb-aa*cc,t=cc<=0?0:aa>0&&disc>=0?(-bb-Math.sqrt(disc))/aa:2;if(t>=0&&t<=1&&t<first){first=t;hit=a}}if(hit){const owner=U.find(a=>a.id===q.owner),dm=q.P*q.P/(q.P+hit.d.G);hit.pd+=dm;owner.dmg+=dm;owner.ht++;m.fx.push([q.x+(x-q.x)*first,q.y+(y-q.y)*first,m.t]);return false}q.x=x;q.y=y;q.left-=K.BS*dt*f;return q.left>1e-8});m.fx=m.fx.filter(f=>m.t-f[2]<.2);
+  for(const a of A){if(a.pd>0)a.hit=m.t;a.hp-=a.pd;a.pd=0;if(a.hp<=0){a.hp=0;a.dead=m.t}}
+  if(U.filter(a=>a.dead<0).length<=1||m.t>=K.TMAX){m.done=true;score()}};
+ return m}
+/* ===== 4 正式評価 ===== */
+function evalL(bots){const sc=bots.map(()=>Array(5).fill(0)),st=bots.map(()=>({sh:0,ht:0,dmg:0,sn:0,tk:0,en:0,tm:0,n:0}));
+ K.EV.forEach((e,ei)=>K.SEEDS.forEach((sd,si)=>{const m=mkMatch(bots,ei,sd,si);while(!m.done)m.step();
+  m.u.forEach((a,i)=>{sc[a.id][ei]+=m.pts[i]/K.SEEDS.length;const s=st[a.id];s.sh+=a.sh;s.ht+=a.ht;s.dmg+=a.dmg;s.sn+=a.sn;s.tk+=a.tk;s.en+=a.en;s.tm+=a.dead<0?m.t:a.dead;s.n++})}));
+ return{sc,tot:sc.map(r=>r.reduce((x,y)=>x+y,0)),st}}
+/* ===== 5 URL・JSON ===== */
+const enc=o=>btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const dec=s=>JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g,'+').replace(/_/g,'/')))));
+if(typeof module!=='undefined')module.exports={K,DEF,der,chk,chkL,mkMatch,evalL,enc,dec};
+/* ===== 6 UI ===== */
+if(typeof document!=='undefined'){
+const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';'),clone=o=>JSON.parse(JSON.stringify(o));
+let L,O,ti,pr,P=null,ties=[],mt=null,pz=0,acc=0,last=0,notice='';
+const cur=()=>{const b=L.b.slice();b[ti]=pr;return b},rk=t=>t.map(x=>1+t.filter(u=>u>x+1e-9).length);
+const table=(bots,S,hi)=>{const r=rk(S.tot);return'<table><tr><th>軍・機体<th>在籍世代<th>'+K.EV.map(e=>e[0]).join('<th>')+'<th>合計(8)<th>順位<th>命中率<th>射程内率</tr>'+bots.map((b,i)=>{const s=S.st[i];
+ return`<tr${i==hi?' style="font-weight:700"':''}><td>${K.SN[i]} ${esc(b.n)}<td>${L.g-b.g+1}<td>${S.sc[i].map(x=>x.toFixed(2)).join('<td>')}<td>${S.tot[i].toFixed(2)}<td>${r[i]}位<td>${s.sh?(100*s.ht/s.sh|0)+'%':'-'}<td>${(100*s.sn/s.tk|0)}%`}).join('')+'</table>'};
+const record=(b,win)=>{const h=b.hist??{wins:0,streak:0,best:0};h.streak=win?h.streak+1:0;h.wins+=+win;h.best=Math.max(h.best,h.streak);b.hist=h};
+const eligible=()=>P&&P.tot[ti]>Math.min(...P.tot)+1e-9;
+const inv=()=>{resetWatch();P=null;$('iss').disabled=true;$('res').textContent='';$('out').value=''};
+const top=()=>{$('top').innerHTML=`<b>${esc(L.n)}</b> 第${L.g}世代　${notice}`;$('tbl').innerHTML='<b>現在の正式評価（固定）</b>（'+K.SEEDS.length+'試合×5競技の平均）'+table(L.b,O)+'<table><tr><th>機体<th>登場世代<th>累積優勝<th>連続優勝<th>最多連続</tr>'+L.b.map(b=>`<tr><td>${esc(b.n)}<td>${b.g}<td>${b.hist.wins}<td>${b.hist.streak}<td>${b.hist.best}</tr>`).join('')+'</table>'};
+const des=()=>{const d=der(pr.d);$('tsel').innerHTML=ties.length>1?'同率最下位から選択: <select id=tp>'+ties.map(i=>`<option value=${i}${i==ti?' selected':''}>${K.SN[i]}`).join('')+'</select>':K.SN[ti]+'軍';
+ $('des').innerHTML=`<p>装備の数値は性能そのものではなく，複数の性能を決める設計パラメーターです．全装備は重量・サイズにも影響します．</p>名前<input id=nm maxlength=20 value="${esc(pr.n)}"> `+K.DN.map((n,i)=>`<div>${n}<input type=number min=0 step=1 data-k=${i} value=${pr.d[i]}> <span class=s>${pr.d[i]}</span> <small>${["出力．重量との比で速度・旋回が決まる","被弾ダメージ軽減．重量増","一発の威力．消費電力も増加","弾の最大到達距離（上限380）","照準・予測精度．敵の発見距離ではない","容量と回復速度"][i]}</small></div>`).join('')+
+ `<b>計算された機体性能：</b> 重量 <b class="${d.rad>K.RCAP?'ng':'ok'}">${d.W.toFixed(1)}　半径 ${d.rad.toFixed(1)}/${K.RCAP}</b>${d.rad>K.RCAP?'（超過）':''}　最高速${d.v.toFixed(0)} 旋回${d.tr.toFixed(1)}rad/s 射程${d.rg} 威力${d.dmg} 射撃消費${(K.KE*d.P**K.EXP).toFixed(1)} 間隔${d.cd.toFixed(1)}s 電池${d.cap}(回復${d.rc.toFixed(1)}/s)`};
+const sel=(k,i,f,v)=>`data-s=${k} data-i=${i} data-f=${f}`;
+const pat=()=>{$('pat').innerHTML='<b>行動パターン</b>（状況が変わると最初から．接近弾が最優先．照準ONで精度向上，OFFでも射撃可能．速度は最高速に対する割合．上から順に実行しループ。最大'+K.MAXST+'手順）'+K.SIT.map(k=>{const p=pr.p[k];return`<div><b>${K.SITN[k]}</b><table><tr><th>移動<th>角度°<th>速度%<th>照準<th>射撃<th>秒<th></tr>`+p.map((s,i)=>{const a=`data-s=${k} data-i=${i}`;
+ return`<tr><td><select ${a} data-f=0>${K.MV.map((n,j)=>`<option value=${j}${j==s[0]?' selected':''}>${n}`).join('')}</select><td><input type=number ${a} data-f=1 value=${s[1]} ${$('advanced').checked?'':'disabled'} step=15 style=width:60px><td><input type=number ${a} data-f=2 value=${s[2]*100} min=0 max=100 step=10 style=width:55px><td><input type=checkbox ${a} data-f=3 ${s[3]?'checked':''}><td><input type=checkbox ${a} data-f=4 ${s[4]?'checked':''}><td><input type=number ${a} data-f=5 value=${s[5]} step=.1 style=width:55px><td><button ${a} data-a=up>↑</button><button ${a} data-a=dn>↓</button><button ${a} data-a=dup>複製</button><button ${a} data-a=del>削除</button></tr>`}).join('')+`</table><button data-s=${k} data-a=add${p.length>=K.MAXST?' disabled':''}>手順を追加</button></div>`}).join('')};
+const showErr=e=>{$('res').innerHTML=e?`<span class=ng>${esc(e)}</span>`:''};
+const init=l=>{L=l;O=evalL(L.b);L.b.forEach((b,i)=>{if(!b.hist)record(b,O.tot.filter(x=>x>=O.tot[i]-1e-9).length===1)});const mn=Math.min(...O.tot);ties=O.tot.map((t,i)=>i).filter(i=>O.tot[i]-mn<1e-9);ti=ties[0];pr=clone(L.b[ti]);inv();top();des();pat();matchList()};
+$('des').oninput=e=>{const t=e.target;if(t.id=='nm')pr.n=t.value;else if(t.dataset.k!=null)pr.d[+t.dataset.k]=+t.value;inv();if(t.id!='nm'){t.parentNode.querySelector('.s').textContent=t.value}};
+$('des').onchange=e=>{if(e.target.dataset.k!=null)des()};
+$('tsel').onchange=e=>{ti=+e.target.value;pr=clone(L.b[ti]);inv();des();pat()};
+$('pat').onchange=e=>{const t=e.target,s=pr.p[t.dataset.s]?.[+t.dataset.i];if(!s||t.dataset.f==null)return;s[+t.dataset.f]=t.type=='checkbox'?+t.checked:+t.value/(t.dataset.f==='2'?100:1);if(t.dataset.f==='0'&&!$('advanced').checked){s[1]=0;pat()}inv()};
+$('advanced').onchange=pat;
+$('pat').onclick=e=>{const t=e.target,a=t.dataset.a;if(!a)return;const p=pr.p[t.dataset.s],i=+t.dataset.i;
+ if(a=='add')p.push([1,0,1,0,0,1]);if(a=='del')p.splice(i,1);if(a=='dup'&&p.length<K.MAXST)p.splice(i,0,clone(p[i]));
+ if(a=='up'&&i>0)[p[i-1],p[i]]=[p[i],p[i-1]];if(a=='dn'&&i<p.length-1)[p[i+1],p[i]]=[p[i],p[i+1]];inv();pat()};
+$('test').onclick=()=>{const e=chk(pr);if(e){showErr(e);return}P=evalL(cur());const o=P.tot.filter((_,i)=>i!=ti),ok=eligible();
+ $('res').innerHTML='<b>試験評価（改良後）</b>'+table(cur(),P,ti)+(ok?'<div class=ok>最下位脱出です。次世代URLを発行できます。</div>':'<div class=ng>最下位（同率含む）です。発行できません。</div>')+`<div>改良前 ${rk(O.tot)[ti]}位（${O.tot[ti].toFixed(2)}点） → 改良後 ${rk(P.tot)[ti]}位（${P.tot[ti].toFixed(2)}点）</div>`;$('iss').disabled=!ok};
+$('rev').onclick=()=>{pr=clone(L.b[ti]);inv();des();pat()};
+$('iss').onclick=()=>{if(!eligible()||chk(pr))return;const b=clone(cur());b[ti].g=L.g+1;delete b[ti].hist;b.forEach((x,i)=>record(x,P.tot.filter(t=>t>=P.tot[i]-1e-9).length===1));const n={v:K.VER,n:L.n,g:L.g+1,b},u=location.href.split('#')[0]+'#L='+enc(n);$('out').value=u;
+ $('res').insertAdjacentHTML('beforeend',`<div>URLの長さ: ${u.length}文字（世代は ${L.g}→${n.g} として発行。この画面の世代は変わりません）</div>`)};
+const draw=()=>{const c=$('cv').getContext('2d');c.clearRect(0,0,640,400);c.fillStyle='#eef2e6';c.strokeStyle='#667';c.beginPath();c.arc(K.CX,K.CY,K.AR,0,7);c.fill();c.stroke();c.fillStyle='#889';mt.obs.forEach(o=>{c.beginPath();c.arc(o[0],o[1],o[2],0,7);c.fill()});
+ mt.bullets.forEach(q=>{c.strokeStyle=K.COL[q.owner];c.lineWidth=2;c.beginPath();c.moveTo(q.x-q.vx*.035,q.y-q.vy*.035);c.lineTo(q.x,q.y);c.stroke()});mt.fx.forEach(f=>{c.fillStyle='#f90';c.beginPath();c.arc(f[0],f[1],5,0,7);c.fill()});c.lineWidth=1;
+ mt.u.forEach(a=>{const col=K.COL[a.id];if(a.dead>=0){c.strokeStyle=col;c.beginPath();c.moveTo(a.x-8,a.y-8);c.lineTo(a.x+8,a.y+8);c.moveTo(a.x+8,a.y-8);c.lineTo(a.x-8,a.y+8);c.stroke();return}
+  c.strokeStyle=col+'88';c.beginPath();c.arc(a.x,a.y,a.d.rg,0,7);c.stroke();
+  c.fillStyle=col;c.beginPath();c.arc(a.x,a.y,a.d.rad,0,7);c.fill();c.strokeStyle='#000';c.beginPath();c.moveTo(a.x,a.y);c.lineTo(a.x+(a.d.rad+6)*Math.cos(a.h),a.y+(a.d.rad+6)*Math.sin(a.h));c.stroke();
+  c.fillStyle='#fff';c.font='bold 11px sans-serif';c.textAlign='center';c.fillText(K.SN[a.id],a.x,a.y+4);c.fillStyle='#0a0';c.fillRect(a.x-12,a.y-a.d.rad-8,24*a.hp/K.HP,3);c.fillStyle='#888';c.fillRect(a.x-12,a.y-a.d.rad-4,24,3);c.fillStyle='#168ad0';c.fillRect(a.x-12,a.y-a.d.rad-4,24*a.e/a.d.cap,3);c.fillStyle='#111';c.fillRect(a.x-12+24*Math.min(1,K.KE*a.d.P**K.EXP/a.d.cap),a.y-a.d.rad-5,1,5)});
+ $('info').innerHTML='t='+mt.t.toFixed(1)+'s'+(mt.done?' 終了 得点:'+mt.u.map((a,i)=>K.SN[a.id]+mt.pts[i]).join(' '):'')+'<br>'+mt.u.map(a=>`${K.SN[a.id]} ${esc(a.id>=0?watchBots[a.id].n:'')} HP${a.hp|0} 電池${Math.max(0,a.e)|0} ${a.dead>=0?'撃破':esc(a.why)}`).join('<br>')};
+let raf=0,watchBots=[],queue=[],current=null,seen=new Map(),timer=0;
+const resetWatch=()=>{cancelAnimationFrame(raf);clearTimeout(timer);mt=null;queue=[];current=null;seen.clear();$('live').textContent='';$('info').textContent='';$('cv').getContext('2d').clearRect(0,0,640,400);if(L)matchList()};
+const order=()=>{const others=[0,1,2].filter(i=>i!==ti).sort((a,b)=>O.tot[b]-O.tot[a]);const pair=(a,b)=>K.EV.findIndex(e=>e[2].length===2&&e[2].includes(a)&&e[2].includes(b));return [pair(...others),pair(others[1],ti),pair(others[0],ti),0,1].flatMap(e=>K.SEEDS.map((_,i)=>[e,i]))};
+const matchList=()=>{$('matches').innerHTML=order().map(([e,i],j)=>`${i===0?'<br><b>'+K.EV[e][0]+'</b> ':''}<button data-j=${j}>▶ ${i+1}${seen.has(j)?' ✓':''}</button>`).join('')};
+const start=j=>{const [e,i]=order()[j];current=j;mt=mkMatch(watchBots,e,K.SEEDS[i],i);pz=0;acc=0;last=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(loop)};
+const finish=()=>{seen.set(current,mt.u.map((a,i)=>[a.id,mt.pts[i]]));matchList();const totals=[0,0,0];for(const rows of seen.values())for(const [id,p] of rows)totals[id]+=p/K.SEEDS.length;$('live').innerHTML='<b>'+ (seen.size===15?'最終順位':'暫定順位')+'（'+seen.size+'/15試合）</b> '+totals.map((p,i)=>`${K.SN[i]} ${rk(totals)[i]}位 ${p.toFixed(2)}点`).join(' ／ ');if(seen.size===15&&$('mode').value==='trial')$('test').click();if(queue.length)timer=setTimeout(()=>start(queue.shift()),900)};
+const loop=n=>{if(!mt||pz)return;acc+=Math.min(.25,(n-last)/1000)*30*+$('sp').value;while(acc>=1&&!mt.done){mt.step();acc--}last=n;draw();if(mt.done)finish();else raf=requestAnimationFrame(loop)};
+const prepare=()=>{if($('mode').value==='trial'&&chk(pr)){showErr(chk(pr));return false}watchBots=clone($('mode').value==='trial'?cur():L.b);return true};
+$('all').onclick=()=>{resetWatch();if(!prepare())return;queue=order().map((_,i)=>i);start(queue.shift())};
+$('matches').onclick=e=>{if(e.target.dataset.j==null)return;clearTimeout(timer);queue=[];if(prepare())start(+e.target.dataset.j)};
+$('again').onclick=()=>{if(current!=null){clearTimeout(timer);queue=[];start(current)}};
+$('mode').onchange=resetWatch;
+$('pz').onclick=()=>{if(!mt)return;if(mt.done){clearTimeout(timer);if(queue.length){pz=!pz;if(!pz)start(queue.shift())}return}pz=!pz;if(!pz){last=performance.now();raf=requestAnimationFrame(loop)}else cancelAnimationFrame(raf)};
+$('ex').onclick=()=>{$('js').value=JSON.stringify({v:K.VER,type:'robot',...pr})};
+$('im').onclick=()=>{try{const o=JSON.parse($('js').value),e=o.v!==K.VER?'対応していない機体バージョンです':chk(o);if(e){$('jm').innerHTML='<span class=ng>'+esc(e)+'</span>';return}pr={n:o.n,d:o.d,p:o.p,g:L.b[ti].g};$('jm').textContent='読み込みました（世代は進みません）';inv();des();pat()}catch(x){$('jm').innerHTML='<span class=ng>JSONとして読めません</span>'}};
+let l0=DEF;const h=location.hash;if(h.startsWith('#L=')){try{const l=dec(h.slice(3)),e=chkL(l);if(e)notice='<span class=ng>URLを読み込めませんでした: '+esc(e)+'（標準リーグで開始）</span>';else l0=l}catch(x){notice='<span class=ng>URLを解読できません（標準リーグで開始）</span>'}}
+l0=clone(l0);l0.v=K.VER;init(l0)}
+</script></html>
