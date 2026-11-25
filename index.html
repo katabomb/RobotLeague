@@ -11,16 +11,16 @@ table{border-collapse:collapse}td,th{border:1px solid var(--bd);padding:2px 6px;
 canvas{width:min(100%,850px);display:block;margin:auto;max-width:100%;background:#dfe6d6;border:1px solid var(--bd)}
 .s{display:inline-block;width:70px}.ok{color:var(--ac);font-weight:700}.ng{color:#c33}
 textarea{width:100%;height:56px;box-sizing:border-box}
+
+:root{--bg:#101722;--fg:#e4edf5;--c:#1c2939;--bd:#405269;--ac:#91d5bd}body{max-width:1100px;margin:auto;padding:18px}body.work{--bg:#14252a;--c:#203638;--bd:#45635f}button{padding:8px 14px}button.primary{background:#386858;color:white;font-weight:bold;padding:12px 20px}h2{font-size:28px}h3{margin:8px 0} .b{padding:16px;margin:12px 0;border-radius:10px} .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.bot{background:var(--c);border:1px solid var(--bd);border-radius:8px;padding:12px;text-align:center}.bot svg{width:100%;max-width:110px;height:85px}.eyebrow{letter-spacing:2px;font-size:11px;color:#aab8ca}.hero{text-align:center;padding:24px}.hero h2{color:#e7c573} [hidden]{display:none!important}canvas{background:#192b2b} input[type=number]{width:80px} .workgrid{display:grid;grid-template-columns:200px 1fr;gap:18px} @media(max-width:600px){body{padding:8px}.workgrid{grid-template-columns:1fr}.bot{padding:5px}.b{padding:10px}} 
 </style>
-<h2 style="margin:4px">ロボットリーグ <small>試作版 ルールv4（Step3）</small></h2>
-<div class=b id=top></div>
-<details class=b><summary>ロボットリーグへようこそ！</summary>円形の闘技場に赤・青・黄の3機が集結した．敵の位置は常に分かるが，命中させるには照準と予測が必要だ．溝は移動を妨げるが弾丸は通過する．境界では衝突を避けるため方向転換する．強い武器は重く，エネルギーも必要だ．装備と作戦を工夫し，最下位から脱出して次の世代へ進もう．</details>
-<div class=b><canvas id=cv width=640 height=400></canvas><div id=info></div><button id=all>▶ 全15試合連続観戦</button><button id=pz>一時停止／再開</button><button id=again>再試合</button> 速度<select id=sp><option>1</option><option>2</option><option>4</option><option>8</option></select>倍 <select id=mode><option value=trial>改良機</option><option value=official>正式機</option></select><div id=matches></div><div id=live></div></div>
-<details class=b><summary>現在の正式評価・機体記録</summary><div id=tbl></div></details>
-<div class=b><b>改良対象（最下位機）</b> <span id=tsel></span><div id=des></div></div>
-<div class=b><label><input type=checkbox id=advanced>詳細設定（角度を編集）</label><div id=pat></div></div>
-<div class=b><button id=test>改良した機体を試験評価する（結果を見る）</button><button id=rev>元に戻す</button><button id=iss>次世代URLを発行</button><div id=res></div><textarea id=out readonly></textarea></div>
-<details class=b><summary>機体JSON</summary><button id=ex>書き出し</button><button id=im>読み込み</button><div id=jm></div><textarea id=js></textarea></details>
+<header><div class=eyebrow>ROBOT LEAGUE / STEP 4</div><h2 id=heading></h2><div id=top></div></header>
+<section id=intro><div class=b><h3>出場機体</h3><div id=cards class=cards></div><p id=story></p></div></section>
+<section id=arena><div class=b><div class=eyebrow id=arenaLabel></div><h3 id=matchTitle>対戦カード</h3><canvas id=cv width=640 height=400></canvas><div id=info></div><button id=all class=primary>▶ 全15試合連続観戦</button><button id=pz>一時停止／再開</button><button id=again>再試合</button> 速度<select id=sp><option>1</option><option>2</option><option>4</option><option>8</option></select>倍 <select id=mode hidden><option value=trial>改良機</option><option value=official>正式機</option></select><div id=matches></div><div id=live></div><button id=skip>大会結果を見る</button></div></section>
+<section id=handover hidden class="b hero"><div class=eyebrow>NEXT CHALLENGER</div><h2>次の挑戦者は，あなたです．</h2><div id=handoBot></div><p>この機体を改良し，強敵に挑め．</p><button id=take class=primary>機体を引き受ける</button></section>
+<details class=b id=records><summary>前大会の成績・機体情報</summary><div id=tbl></div><div id=opponents></div></details>
+<section id=workshop hidden><div class=b><h3>機体設計</h3><span id=tsel></span><div class=workgrid><div id=preview></div><div id=des></div></div></div><div class=b><label><input type=checkbox id=advanced>詳細設定（角度を編集）</label><div id=pat></div></div><details class=b><summary>機体JSON</summary><button id=ex>書き出し</button><button id=im>読み込み</button><div id=jm></div><textarea id=js></textarea></details><button id=rev>元に戻す</button><button id=enter class=primary>新しい大会にエントリーする</button></section>
+<section id=result hidden class=b><h2 id=resultTitle></h2><div id=res></div><button id=back>開発工房に戻る</button><div id=naming hidden><h3>リーグ創設 — 命名権獲得</h3><p>この名前は以後変更できません．</p><input id=leagueName maxlength=30 placeholder="リーグ名"></div><button id=iss class=primary>次世代URLを発行</button><div id=share hidden><textarea id=out readonly></textarea><button id=copy>URLをコピー</button><button id=next class=primary>次世代へ進む</button></div></section><button id=test hidden></button>
 <script>
 'use strict';
 /* ===== 1 Step2: 有限弾速・相対座標衝突・重量と半径・電力収支 ===== */
@@ -94,36 +94,35 @@ if(typeof module!=='undefined')module.exports={K,DEF,der,chk,chkL,mkMatch,evalL,
 /* ===== 6 UI ===== */
 if(typeof document!=='undefined'){
 const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';'),clone=o=>JSON.parse(JSON.stringify(o));
-let L,O,ti,pr,P=null,ties=[],mt=null,pz=0,acc=0,last=0,notice='';
+let phase='spectate',preseason=true; let L,O,ti,pr,P=null,ties=[],mt=null,pz=0,acc=0,last=0,notice='';
 const cur=()=>{const b=L.b.slice();b[ti]=pr;return b},rk=t=>t.map(x=>1+t.filter(u=>u>x+1e-9).length);
 const table=(bots,S,hi)=>{const r=rk(S.tot);return'<table><tr><th>軍・機体<th>在籍世代<th>'+K.EV.map(e=>e[0]).join('<th>')+'<th>合計(8)<th>順位<th>命中率<th>射程内率</tr>'+bots.map((b,i)=>{const s=S.st[i];
  return`<tr${i==hi?' style="font-weight:700"':''}><td>${K.SN[i]} ${esc(b.n)}<td>${L.g-b.g+1}<td>${S.sc[i].map(x=>x.toFixed(2)).join('<td>')}<td>${S.tot[i].toFixed(2)}<td>${r[i]}位<td>${s.sh?(100*s.ht/s.sh|0)+'%':'-'}<td>${(100*s.sn/s.tk|0)}%`}).join('')+'</table>'};
 const record=(b,win)=>{const h=b.hist??{wins:0,streak:0,best:0};h.streak=win?h.streak+1:0;h.wins+=+win;h.best=Math.max(h.best,h.streak);b.hist=h};
-const eligible=()=>P&&P.tot[ti]>Math.min(...P.tot)+1e-9;
+const eligible=()=>P&&(preseason?P.tot[ti]>Math.max(...P.tot.filter((_,i)=>i!==ti))+1e-9:P.tot[ti]>Math.min(...P.tot)+1e-9);
 const inv=()=>{resetWatch();P=null;$('iss').disabled=true;$('res').textContent='';$('out').value=''};
-const top=()=>{$('top').innerHTML=`<b>${esc(L.n)}</b> 第${L.g}世代　${notice}`;$('tbl').innerHTML='<b>現在の正式評価（固定）</b>（'+K.SEEDS.length+'試合×5競技の平均）'+table(L.b,O)+'<table><tr><th>機体<th>登場世代<th>累積優勝<th>連続優勝<th>最多連続</tr>'+L.b.map(b=>`<tr><td>${esc(b.n)}<td>${b.g}<td>${b.hist.wins}<td>${b.hist.streak}<td>${b.hist.best}</tr>`).join('')+'</table>'};
-const des=()=>{const d=der(pr.d);$('tsel').innerHTML=ties.length>1?'同率最下位から選択: <select id=tp>'+ties.map(i=>`<option value=${i}${i==ti?' selected':''}>${K.SN[i]}`).join('')+'</select>':K.SN[ti]+'軍';
+const top=()=>{$('top').innerHTML=`<b>${preseason?'リーグ創設前':esc(L.n)+' ／ 第'+L.g+'世代'}</b>　${notice}`;$('tbl').innerHTML='<b>現在の正式評価（固定）</b>（'+K.SEEDS.length+'試合×5競技の平均）'+table(L.b,O)+'<table><tr><th>機体<th>登場世代<th>累積優勝<th>連続優勝<th>最多連続</tr>'+L.b.map(b=>`<tr><td>${esc(b.n)}<td>${b.g}<td>${b.hist.wins}<td>${b.hist.streak}<td>${b.hist.best}</tr>`).join('')+'</table>'};
+const des=()=>{const d=der(pr.d);$('tsel').innerHTML=phase==='spectate'&&ties.length>1?'同率最下位から選択: <select id=tp>'+ties.map(i=>`<option value=${i}${i==ti?' selected':''}>${K.SN[i]}`).join('')+'</select>':K.SN[ti]+'軍';
  $('des').innerHTML=`<p>装備の数値は性能そのものではなく，複数の性能を決める設計パラメーターです．全装備は重量・サイズにも影響します．</p>名前<input id=nm maxlength=20 value="${esc(pr.n)}"> `+K.DN.map((n,i)=>`<div>${n}<input type=number min=0 step=1 data-k=${i} value=${pr.d[i]}> <span class=s>${pr.d[i]}</span> <small>${["出力．重量との比で速度・旋回が決まる","被弾ダメージ軽減．重量増","一発の威力．消費電力も増加","弾の最大到達距離（上限380）","照準・予測精度．敵の発見距離ではない","容量と回復速度"][i]}</small></div>`).join('')+
  `<b>計算された機体性能：</b> 重量 <b class="${d.rad>K.RCAP?'ng':'ok'}">${d.W.toFixed(1)}　半径 ${d.rad.toFixed(1)}/${K.RCAP}</b>${d.rad>K.RCAP?'（超過）':''}　最高速${d.v.toFixed(0)} 旋回${d.tr.toFixed(1)}rad/s 射程${d.rg} 威力${d.dmg} 射撃消費${(K.KE*d.P**K.EXP).toFixed(1)} 間隔${d.cd.toFixed(1)}s 電池${d.cap}(回復${d.rc.toFixed(1)}/s)`};
 const sel=(k,i,f,v)=>`data-s=${k} data-i=${i} data-f=${f}`;
 const pat=()=>{$('pat').innerHTML='<b>行動パターン</b>（状況が変わると最初から．接近弾が最優先．照準ONで精度向上，OFFでも射撃可能．速度は最高速に対する割合．上から順に実行しループ。最大'+K.MAXST+'手順）'+K.SIT.map(k=>{const p=pr.p[k];return`<div><b>${K.SITN[k]}</b><table><tr><th>移動<th>角度°<th>速度%<th>照準<th>射撃<th>秒<th></tr>`+p.map((s,i)=>{const a=`data-s=${k} data-i=${i}`;
  return`<tr><td><select ${a} data-f=0>${K.MV.map((n,j)=>`<option value=${j}${j==s[0]?' selected':''}>${n}`).join('')}</select><td><input type=number ${a} data-f=1 value=${s[1]} ${$('advanced').checked?'':'disabled'} step=15 style=width:60px><td><input type=number ${a} data-f=2 value=${s[2]*100} min=0 max=100 step=10 style=width:55px><td><input type=checkbox ${a} data-f=3 ${s[3]?'checked':''}><td><input type=checkbox ${a} data-f=4 ${s[4]?'checked':''}><td><input type=number ${a} data-f=5 value=${s[5]} step=.1 style=width:55px><td><button ${a} data-a=up>↑</button><button ${a} data-a=dn>↓</button><button ${a} data-a=dup>複製</button><button ${a} data-a=del>削除</button></tr>`}).join('')+`</table><button data-s=${k} data-a=add${p.length>=K.MAXST?' disabled':''}>手順を追加</button></div>`}).join('')};
 const showErr=e=>{$('res').innerHTML=e?`<span class=ng>${esc(e)}</span>`:''};
-const init=l=>{L=l;O=evalL(L.b);L.b.forEach((b,i)=>{if(!b.hist)record(b,O.tot.filter(x=>x>=O.tot[i]-1e-9).length===1)});const mn=Math.min(...O.tot);ties=O.tot.map((t,i)=>i).filter(i=>O.tot[i]-mn<1e-9);ti=ties[0];pr=clone(L.b[ti]);inv();top();des();pat();matchList()};
-$('des').oninput=e=>{const t=e.target;if(t.id=='nm')pr.n=t.value;else if(t.dataset.k!=null)pr.d[+t.dataset.k]=+t.value;inv();if(t.id!='nm'){t.parentNode.querySelector('.s').textContent=t.value}};
-$('des').onchange=e=>{if(e.target.dataset.k!=null)des()};
-$('tsel').onchange=e=>{ti=+e.target.value;pr=clone(L.b[ti]);inv();des();pat()};
+const init=l=>{L=l;O=evalL(L.b);L.b.forEach((b,i)=>{if(!b.hist)b.hist={wins:0,streak:0,best:0}});const mn=Math.min(...O.tot);ties=O.tot.map((t,i)=>i).filter(i=>O.tot[i]-mn<1e-9);ti=ties[0];pr=clone(L.b[ti]);inv();top();des();pat();matchList()};
+$('des').oninput=e=>{const t=e.target;if(t.id=='nm')pr.n=t.value;else if(t.dataset.k!=null)pr.d[+t.dataset.k]=+t.value;inv();if(t.id!='nm'){t.parentNode.querySelector('.s').textContent=t.value;preview()}};
+$('des').onchange=e=>{if(e.target.dataset.k!=null){des();preview()}};
+$('tsel').onchange=e=>{ti=+e.target.value;pr=clone(L.b[ti]);inv();des();pat();preview()};
 $('pat').onchange=e=>{const t=e.target,s=pr.p[t.dataset.s]?.[+t.dataset.i];if(!s||t.dataset.f==null)return;s[+t.dataset.f]=t.type=='checkbox'?+t.checked:+t.value/(t.dataset.f==='2'?100:1);if(t.dataset.f==='0'&&!$('advanced').checked){s[1]=0;pat()}inv()};
 $('advanced').onchange=pat;
 $('pat').onclick=e=>{const t=e.target,a=t.dataset.a;if(!a)return;const p=pr.p[t.dataset.s],i=+t.dataset.i;
  if(a=='add')p.push([1,0,1,0,0,1]);if(a=='del')p.splice(i,1);if(a=='dup'&&p.length<K.MAXST)p.splice(i,0,clone(p[i]));
  if(a=='up'&&i>0)[p[i-1],p[i]]=[p[i],p[i-1]];if(a=='dn'&&i<p.length-1)[p[i+1],p[i]]=[p[i],p[i+1]];inv();pat()};
 $('test').onclick=()=>{const e=chk(pr);if(e){showErr(e);return}P=evalL(cur());const o=P.tot.filter((_,i)=>i!=ti),ok=eligible();
- $('res').innerHTML='<b>試験評価（改良後）</b>'+table(cur(),P,ti)+(ok?'<div class=ok>最下位脱出です。次世代URLを発行できます。</div>':'<div class=ng>最下位（同率含む）です。発行できません。</div>')+`<div>改良前 ${rk(O.tot)[ti]}位（${O.tot[ti].toFixed(2)}点） → 改良後 ${rk(P.tot)[ti]}位（${P.tot[ti].toFixed(2)}点）</div>`;$('iss').disabled=!ok};
-$('rev').onclick=()=>{pr=clone(L.b[ti]);inv();des();pat()};
-$('iss').onclick=()=>{if(!eligible()||chk(pr))return;const b=clone(cur());b[ti].g=L.g+1;delete b[ti].hist;b.forEach((x,i)=>record(x,P.tot.filter(t=>t>=P.tot[i]-1e-9).length===1));const n={v:K.VER,n:L.n,g:L.g+1,b},u=location.href.split('#')[0]+'#L='+enc(n);$('out').value=u;
- $('res').insertAdjacentHTML('beforeend',`<div>URLの長さ: ${u.length}文字（世代は ${L.g}→${n.g} として発行。この画面の世代は変わりません）</div>`)};
-const draw=()=>{const c=$('cv').getContext('2d');c.clearRect(0,0,640,400);c.fillStyle='#eef2e6';c.strokeStyle='#667';c.beginPath();c.arc(K.CX,K.CY,K.AR,0,7);c.fill();c.stroke();c.fillStyle='#889';mt.obs.forEach(o=>{c.beginPath();c.arc(o[0],o[1],o[2],0,7);c.fill()});
+ $('res').innerHTML=table(cur(),P,ti)+`<p>改良前 ${rk(O.tot)[ti]}位 → 改良後 ${rk(P.tot)[ti]}位</p>`; $('resultTitle').textContent=ok?(preseason?'初優勝！ リーグ創設へ':'挑戦成功！'):'挑戦失敗 — さらなる改良を'; $('iss').hidden=!ok;$('iss').disabled=!ok;$('naming').hidden=!(ok&&preseason);$('iss').textContent=preseason?'リーグを創設する':'次世代URLを発行';$('share').hidden=true;setPhase('result')};
+ $('rev').onclick=()=>{pr=clone(L.b[ti]);inv();des();pat();preview()};
+ $('iss').onclick=()=>{if(!eligible()||chk(pr))return;const name=preseason?$('leagueName').value.trim():L.n;if(!name){$('leagueName').focus();return}const b=clone(cur()),g=preseason?1:L.g+1;b[ti].g=g;delete b[ti].hist;if(preseason)b.forEach(x=>{x.g=1;delete x.hist});b.forEach((x,i)=>record(x,P.tot.filter(t=>t>=P.tot[i]-1e-9).length===1));const n={v:K.VER,n:name,g,b};$('out').value=location.href.split('#')[0]+'#L='+enc(n);$('share').hidden=false;$('iss').disabled=true;$('back').hidden=true;$('leagueName').disabled=true};
+const draw=()=>{const c=$('cv').getContext('2d');c.clearRect(0,0,640,400);c.fillStyle='#233b38';c.strokeStyle='#77968b';c.beginPath();c.arc(K.CX,K.CY,K.AR,0,7);c.fill();c.stroke();c.fillStyle='#889';mt.obs.forEach(o=>{c.beginPath();c.arc(o[0],o[1],o[2],0,7);c.fill()});
  mt.bullets.forEach(q=>{c.strokeStyle=K.COL[q.owner];c.lineWidth=2;c.beginPath();c.moveTo(q.x-q.vx*.035,q.y-q.vy*.035);c.lineTo(q.x,q.y);c.stroke()});mt.fx.forEach(f=>{c.fillStyle='#f90';c.beginPath();c.arc(f[0],f[1],5,0,7);c.fill()});c.lineWidth=1;
  mt.u.forEach(a=>{const col=K.COL[a.id];if(a.dead>=0){c.strokeStyle=col;c.beginPath();c.moveTo(a.x-8,a.y-8);c.lineTo(a.x+8,a.y+8);c.moveTo(a.x+8,a.y-8);c.lineTo(a.x-8,a.y+8);c.stroke();return}
   c.strokeStyle=col+'88';c.beginPath();c.arc(a.x,a.y,a.d.rg,0,7);c.stroke();
@@ -134,8 +133,8 @@ let raf=0,watchBots=[],queue=[],current=null,seen=new Map(),timer=0;
 const resetWatch=()=>{cancelAnimationFrame(raf);clearTimeout(timer);mt=null;queue=[];current=null;seen.clear();$('live').textContent='';$('info').textContent='';$('cv').getContext('2d').clearRect(0,0,640,400);if(L)matchList()};
 const order=()=>{const others=[0,1,2].filter(i=>i!==ti).sort((a,b)=>O.tot[b]-O.tot[a]);const pair=(a,b)=>K.EV.findIndex(e=>e[2].length===2&&e[2].includes(a)&&e[2].includes(b));return [pair(...others),pair(others[1],ti),pair(others[0],ti),0,1].flatMap(e=>K.SEEDS.map((_,i)=>[e,i]))};
 const matchList=()=>{$('matches').innerHTML=order().map(([e,i],j)=>`${i===0?'<br><b>'+K.EV[e][0]+'</b> ':''}<button data-j=${j}>▶ ${i+1}${seen.has(j)?' ✓':''}</button>`).join('')};
-const start=j=>{const [e,i]=order()[j];current=j;mt=mkMatch(watchBots,e,K.SEEDS[i],i);pz=0;acc=0;last=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(loop)};
-const finish=()=>{seen.set(current,mt.u.map((a,i)=>[a.id,mt.pts[i]]));matchList();const totals=[0,0,0];for(const rows of seen.values())for(const [id,p] of rows)totals[id]+=p/K.SEEDS.length;$('live').innerHTML='<b>'+ (seen.size===15?'最終順位':'暫定順位')+'（'+seen.size+'/15試合）</b> '+totals.map((p,i)=>`${K.SN[i]} ${rk(totals)[i]}位 ${p.toFixed(2)}点`).join(' ／ ');if(seen.size===15&&$('mode').value==='trial')$('test').click();if(queue.length)timer=setTimeout(()=>start(queue.shift()),900)};
+const start=j=>{const [e,i]=order()[j];current=j;$('matchTitle').textContent=K.EV[e][0]+' ／ 第'+(i+1)+'試合';mt=mkMatch(watchBots,e,K.SEEDS[i],i);pz=0;acc=0;last=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(loop)};
+const finish=()=>{seen.set(current,mt.u.map((a,i)=>[a.id,mt.pts[i]]));matchList();const totals=[0,0,0];for(const rows of seen.values())for(const [id,p] of rows)totals[id]+=p/K.SEEDS.length;$('live').innerHTML='<b>'+ (seen.size===15?'最終順位':'暫定順位')+'（'+seen.size+'/15試合）</b> '+totals.map((p,i)=>`${K.SN[i]} ${rk(totals)[i]}位 ${p.toFixed(2)}点`).join(' ／ ');if(seen.size===15){if(phase==='challenge'){$('test').click();return}if(phase==='spectate')showHandover()}if(queue.length)timer=setTimeout(()=>start(queue.shift()),900)};
 const loop=n=>{if(!mt||pz)return;acc+=Math.min(.25,(n-last)/1000)*30*+$('sp').value;while(acc>=1&&!mt.done){mt.step();acc--}last=n;draw();if(mt.done)finish();else raf=requestAnimationFrame(loop)};
 const prepare=()=>{if($('mode').value==='trial'&&chk(pr)){showErr(chk(pr));return false}watchBots=clone($('mode').value==='trial'?cur():L.b);return true};
 $('all').onclick=()=>{resetWatch();if(!prepare())return;queue=order().map((_,i)=>i);start(queue.shift())};
@@ -144,7 +143,17 @@ $('again').onclick=()=>{if(current!=null){clearTimeout(timer);queue=[];start(cur
 $('mode').onchange=resetWatch;
 $('pz').onclick=()=>{if(!mt)return;if(mt.done){clearTimeout(timer);if(queue.length){pz=!pz;if(!pz)start(queue.shift())}return}pz=!pz;if(!pz){last=performance.now();raf=requestAnimationFrame(loop)}else cancelAnimationFrame(raf)};
 $('ex').onclick=()=>{$('js').value=JSON.stringify({v:K.VER,type:'robot',...pr})};
-$('im').onclick=()=>{try{const o=JSON.parse($('js').value),e=o.v!==K.VER?'対応していない機体バージョンです':chk(o);if(e){$('jm').innerHTML='<span class=ng>'+esc(e)+'</span>';return}pr={n:o.n,d:o.d,p:o.p,g:L.b[ti].g};$('jm').textContent='読み込みました（世代は進みません）';inv();des();pat()}catch(x){$('jm').innerHTML='<span class=ng>JSONとして読めません</span>'}};
-let l0=DEF;const h=location.hash;if(h.startsWith('#L=')){try{const l=dec(h.slice(3)),e=chkL(l);if(e)notice='<span class=ng>URLを読み込めませんでした: '+esc(e)+'（標準リーグで開始）</span>';else l0=l}catch(x){notice='<span class=ng>URLを解読できません（標準リーグで開始）</span>'}}
-l0=clone(l0);l0.v=K.VER;init(l0)}
+$('im').onclick=()=>{try{const o=JSON.parse($('js').value),e=o.v!==K.VER?'対応していない機体バージョンです':chk(o);if(e){$('jm').innerHTML='<span class=ng>'+esc(e)+'</span>';return}pr={n:o.n,d:o.d,p:o.p,g:L.b[ti].g};$('jm').textContent='読み込みました（世代は進みません）';inv();des();pat();preview()}catch(x){$('jm').innerHTML='<span class=ng>JSONとして読めません</span>'}};
+const botArt=(b,i)=>`<svg viewBox="0 0 100 80"><circle cx="50" cy="40" r="36" fill="none" stroke="${K.COL[i]}" stroke-dasharray="3 4"/><circle cx="50" cy="40" r="${Math.min(34,der(b.d).rad*1.1)}" fill="${K.COL[i]}" fill-opacity=".25" stroke="${K.COL[i]}" stroke-width="2"/><path d="M50 40 V8" stroke="${K.COL[i]}" stroke-width="3"/></svg>`;
+ const preview=()=>{$('preview').innerHTML=botArt(pr,ti)+`<p>機体半径 ${der(pr.d).rad.toFixed(1)} / ${K.RCAP}</p><small>設計プレビュー</small>`};
+ function setPhase(x){phase=x;document.body.classList.toggle('work',x==='workshop');$('intro').hidden=x!=='spectate';$('arena').hidden=!['spectate','challenge'].includes(x);$('workshop').hidden=x!=='workshop';$('handover').hidden=true;$('result').hidden=x!=='result';$('heading').textContent=({spectate:preseason?'リーグ創設前最終戦':'大会観戦',workshop:'機体開発工房',challenge:'新大会への挑戦',result:'大会結果'})[x];$('arenaLabel').textContent=x==='challenge'?'LIVE / CHALLENGE':'ARCHIVE / SPECTATE';$('mode').value=x==='spectate'?'official':'trial';$('records').open=x==='workshop';}
+ function showHandover(){$('handover').hidden=false;$('records').open=true;$('handoBot').innerHTML=ties.map(i=>`<div class=bot>${botArt(L.b[i],i)}<b>${esc(L.b[i].n)}</b> ${ties.length>1?`<label><input type=radio name=pick value=${i} ${i===ti?'checked':''}>選択</label>`:''}</div>`).join('');}
+ $('skip').onclick=()=>{resetWatch();if(phase==='spectate')showHandover();else $('test').click()};
+ $('take').onclick=()=>{const pick=document.querySelector('input[name=pick]:checked');if(pick)ti=+pick.value;pr=clone(L.b[ti]);inv();setPhase('workshop');des();pat();preview();$('opponents').innerHTML=L.b.map((b,i)=>`<details><summary>${esc(b.n)} の設計</summary><p>${K.DN.map((n,j)=>n+' '+b.d[j]).join(' ／ ')}</p>${K.SIT.map(k=>`<p>${K.SITN[k]}：${b.p[k].map(s=>K.MV[s[0]]+' '+s[1]+'° '+s[2]*100+'% '+(s[3]?'照準 ':'')+(s[4]?'射撃 ':'')+s[5]+'秒').join(' → ')}</p>`).join('')}</details>`).join('');window.scrollTo(0,0)};
+ $('enter').onclick=()=>{const e=chk(pr);if(e){alert(e);return}setPhase('challenge');$('all').click();window.scrollTo(0,0)};
+ $('back').onclick=()=>{resetWatch();setPhase('workshop');window.scrollTo(0,0)};
+ $('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('out').value)}catch(e){$('out').select();document.execCommand('copy')}};
+ $('next').onclick=()=>{location.href=$('out').value;location.reload()};
+ let l0=DEF;const h=location.hash;if(h.startsWith('#L=')){try{const l=dec(h.slice(3)),e=chkL(l);if(e)notice='<span class=ng>URLを読み込めませんでした: '+esc(e)+'（標準リーグで開始）</span>';else {l0=l;preseason=false}}catch(x){notice='<span class=ng>URLを解読できません（標準リーグで開始）</span>'}}
+l0=clone(l0);l0.v=K.VER;init(l0);setPhase('spectate');$('cards').innerHTML=L.b.map((b,i)=>`<div class=bot>${botArt(b,i)}<h3>${esc(b.n)}</h3><small>${preseason?'創設前選抜機':'累積優勝 '+b.hist.wins+'回 ／ 連続 '+b.hist.streak+'回'}</small></div>`).join('');$('story').textContent=preseason?'選抜を勝ち抜いた3機．この戦いを見届け，新しいリーグの創設に挑もう．':'前大会の戦いを振り返り，次の挑戦に備えよう．';}
 </script></html>
